@@ -6,8 +6,18 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import zoom  # 🌟 新增：导入 scipy 的放大插值模块
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# 现在只读取一个统一的 txt 文件
-filename = os.path.join(SCRIPT_DIR, "heatmap.txt")
+
+# ==========================================
+# 🌟 修改点 1：定义统一的 data 目录路径
+# ==========================================
+DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../data"))
+
+# 🌟 安全检查：如果 data 目录不存在，则自动创建，防止后续保存图片报错
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+# 🌟 修改点 2：从 data 目录读取文件
+filename = os.path.join(DATA_DIR, "heatmap.txt")
 
 if not os.path.exists(filename):
     print(f"❌ 找不到数据文件：{filename}")
@@ -95,8 +105,10 @@ for N, data in matrices.items():
     plt.xlabel("X (Columns)")
     plt.ylabel("Y (Rows)")
 
-    # 动态生成图片名称
-    img_name = os.path.join(SCRIPT_DIR, f"colormap_{N}.png")
+    # ==========================================
+    # 🌟 修改点 3：将生成的图片保存到 data 目录
+    # ==========================================
+    img_name = os.path.join(DATA_DIR, f"colormap_{N}.png")
     plt.savefig(img_name, dpi=300, bbox_inches='tight')
 
     # 关闭当前画布

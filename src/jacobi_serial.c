@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
     }
 
     // 1. 在主函数统一打开文件（"w" 模式覆盖之前的旧文件）
-    char filename[] = "../scripts/heatmap.txt";
+    char filename[] = "../data/heatmap.txt";
     FILE *fp = fopen(filename, "w");
     if (!fp) {
         printf("[!] 警告: 无法创建或打开 %s 准备写入。\n", filename);

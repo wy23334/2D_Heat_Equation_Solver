@@ -2,7 +2,7 @@
 import subprocess
 
 SERIAL_EXE = "../src/jacobi_serial"
-OMP_EXE = "../src/jacobi_omp"
+OMP_EXE = "../src/jacobi_omp_dynamic"
 
 
 def get_center_temp(executable, N, threads=1, max_iters=200000):
@@ -34,7 +34,7 @@ print("🔍 开始进行正确性极端验证 (Sanity Check)...\n")
 # 【工程建议】：为了快速验证，这里改回 256。
 # 如果用 1024，它们俩都会输出 21.280939（截断状态）；
 # 如果用 256，它们俩都会输出 56.236824（自然收敛状态）。
-test_N = 1024
+test_N = 256
 
 print(f"正在运行串行版本 (N={test_N})，请耐心等待...")
 serial_temp = get_center_temp(SERIAL_EXE, test_N)
