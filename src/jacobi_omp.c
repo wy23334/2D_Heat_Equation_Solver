@@ -1,9 +1,13 @@
+// /home/wy/Projects/2D_Heat_Equation_Solver/src/jacobi_omp.c
+// phase 2
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <omp.h>       // 必须引入的 OpenMP 头文件
 
-// 响应加分挑战：通过宏开关切换不同的 schedule 策略
+// [Req 1] 使用 OpenMP 进行并行化 (引入必备的头文件)
+#include <omp.h>
+
+
 #if defined(SCHED_DYNAMIC)
     #define SCHED_CLAUSE schedule(dynamic)
 #elif defined(SCHED_GUIDED)
@@ -17,21 +21,23 @@
 
 int main(int argc, char *argv[]) {
     int N = 1024;
-    int num_threads = 4;
+    int num_threads = 8;
     int max_iters = 200000;
 
-    // 支持命令行传参，方便 Python 自动化评测
+    // [Req 4 & Req 5 的基础支撑]
+    // 支持命令行传参动态修改 N 和 线程数。
+    // 这使得外部自动化评测脚本可以通过改变 N 测“弱标(Req 5)”，通过改变 num_threads 测“强标(Req 4)”。
     if (argc > 1) N = atoi(argv[1]);
     if (argc > 2) num_threads = atoi(argv[2]);
     if (argc > 3) max_iters = atoi(argv[3]);
 
+    // [Req 1] 使用 OpenMP 进行并行化 (在程序运行时动态设置使用多少个线程)
     omp_set_num_threads(num_threads);
 
     double *u = (double *)malloc(N * N * sizeof(double));
     double *u_new = (double *)malloc(N * N * sizeof(double));
 
     // 【HPC极限优化】：并行初始化 (First-Touch Policy)
-    // 这会让内存页绑定到距离各个 CPU 核心最近的物理内存上，极大提升内存带宽！
     #pragma omp parallel for SCHED_CLAUSE
     for (int i = 0; i < N * N; i++) {
         u[i] = 0.0; u_new[i] = 0.0;
@@ -41,14 +47,16 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < N; i++) { u[IDX(i, N-1, N)] = 0.0; u_new[IDX(i, N-1, N)] = 0.0; }
     for (int j = 0; j < N; j++) { u[IDX(N-1, j, N)] = 75.0;u_new[IDX(N-1, j, N)] = 75.0;}
 
-    double start_time = omp_get_wtime(); // 使用 OpenMP 的高精度挂钟时间
+    // [计时方法]：采用 OpenMP 专用的高精度并行计时器
+    double start_time = omp_get_wtime();
     int iter = 0;
     double max_diff = 0.0;
 
     for (iter = 1; iter <= max_iters; iter++) {
         max_diff = 0.0;
 
-        // 【核心魔法指令】外层循环并行化 + 安全规约
+        // [Req 2] 并行化外层 i 循环（行方向），使用 #pragma omp parallel for
+        // [Req 3] 处理收敛判据中的归约问题，使用 reduction(max:max_diff) 安全合并局部最大值
         #pragma omp parallel for SCHED_CLAUSE reduction(max:max_diff)
         for (int i = 1; i < N - 1; i++) {
             for (int j = 1; j < N - 1; j++) {
@@ -77,8 +85,9 @@ int main(int argc, char *argv[]) {
         center_temp = (u[IDX(m-1, m-1, N)] + u[IDX(m, m, N)] + u[IDX(m-1, m, N)] + u[IDX(m, m-1, N)]) / 4.0;
     }
 
-    // 严谨机器格式，专供 Python 正则表达式抓取
-    printf("RESULT,N=%d,Threads=%d,Iters=%d,Time=%.6f,Center=%.6f\n", N, num_threads, iter-1, elapsed, center_temp);
+    // [Req 4 & Req 5] 修正了 iter 的准确性。这段紧凑的输出同样是为了方便 Python 抓取
+    int final_iter = (iter > max_iters) ? max_iters : iter;
+    printf("RESULT,N=%d,Threads=%d,Iters=%d,Time=%.6f,Center=%.6f\n", N, num_threads, final_iter, elapsed, center_temp);
 
     free(u); free(u_new);
     return 0;
