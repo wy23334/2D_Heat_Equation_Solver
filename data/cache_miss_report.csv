@@ -1,0 +1,3 @@
+Access_Pattern,Cache_Refs,Cache_Misses
+Row-Major_Good,264020821,1337092
+Col-Major_Bad,4898054513,42286240

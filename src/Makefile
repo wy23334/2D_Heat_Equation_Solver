@@ -1,28 +1,30 @@
 CC = gcc
-CFLAGS = -O3 -Wall
+# 1. 基础优化：用于真实的“原始串行”基准测试
+CFLAGS_BASE = -O3 -Wall
+# 2. 极限优化：用于我们精心调优的“分块+SIMD”版本
+CFLAGS_EXTREME = -O3 -Wall -march=native -ffast-math
 LDFLAGS = -lm
-# 基础的 OpenMP 编译选项，不再绑定特定的宏
 OMP_BASE = -fopenmp
 
-# 默认目标：一次性编译出所有版本
-all: serial omp_static omp_dynamic omp_guided
+all: serial serial_tiled omp_static omp_dynamic omp_guided
 
-# 1. 编译串行版本
+# 编译“原始串行”（作为真正的 Baseline）
 serial: jacobi_serial.c
-	$(CC) $(CFLAGS) jacobi_serial.c -o jacobi_serial $(LDFLAGS)
+	$(CC) $(CFLAGS_BASE) jacobi_serial.c -o jacobi_serial $(LDFLAGS)
 
-# 2. 编译静态调度版本 (C代码中默认走 #else 分支，所以无需传宏)
+# 编译“极限优化版”
+serial_tiled: jacobi_serial_tiled.c
+	$(CC) $(CFLAGS_EXTREME) jacobi_serial_tiled.c -o jacobi_serial_tiled $(LDFLAGS)
+
+# OpenMP 相关编译保持不变
 omp_static: jacobi_omp.c
-	$(CC) $(CFLAGS) $(OMP_BASE) jacobi_omp.c -o jacobi_omp_static $(LDFLAGS)
+	$(CC) $(CFLAGS_EXTREME) $(OMP_BASE) jacobi_omp.c -o jacobi_omp_static $(LDFLAGS)
 
-# 3. 编译动态调度版本 (传入 -DSCHED_DYNAMIC 宏激活对应代码)
 omp_dynamic: jacobi_omp.c
-	$(CC) $(CFLAGS) $(OMP_BASE) -DSCHED_DYNAMIC jacobi_omp.c -o jacobi_omp_dynamic $(LDFLAGS)
+	$(CC) $(CFLAGS_EXTREME) $(OMP_BASE) -DSCHED_DYNAMIC jacobi_omp.c -o jacobi_omp_dynamic $(LDFLAGS)
 
-# 4. 编译向导调度版本 (传入 -DSCHED_GUIDED 宏激活对应代码)
 omp_guided: jacobi_omp.c
-	$(CC) $(CFLAGS) $(OMP_BASE) -DSCHED_GUIDED jacobi_omp.c -o jacobi_omp_guided $(LDFLAGS)
+	$(CC) $(CFLAGS_EXTREME) $(OMP_BASE) -DSCHED_GUIDED jacobi_omp.c -o jacobi_omp_guided $(LDFLAGS)
 
-# 清理所有生成的文件（注意通配符 jacobi_omp_* 会清理掉三个版本的omp）
 clean:
-	rm -f jacobi_serial jacobi_omp_* heatmap_*.txt heatmap_*.png *.csv *.png
+	rm -f jacobi_serial jacobi_serial_tiled jacobi_omp_* heatmap_*.txt heatmap_*.png *.csv *.png
