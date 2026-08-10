@@ -1,8 +1,11 @@
 # /home/wy/Projects/2D_Heat_Equation_Solver/scripts/phase_2_verify_correctness.py
 import subprocess
+import os
 
-SERIAL_EXE = "../src/jacobi_serial"
-OMP_EXE = "../src/jacobi_omp_dynamic"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+SERIAL_EXE = os.path.join(PROJECT_ROOT, "src", "jacobi_serial")
+OMP_EXE = os.path.join(PROJECT_ROOT, "src", "jacobi_omp_static")
 
 
 def get_center_temp(executable, N, threads=1, max_iters=200000):
@@ -12,10 +15,13 @@ def get_center_temp(executable, N, threads=1, max_iters=200000):
         # 并行版本：支持完整传参 N, threads, max_iters
         cmd = [executable, str(N), str(threads), str(max_iters)]
     else:
-        # 【核心修复】串行版本：只传 N！绝对不传多余参数，防止 C 代码解析失败回退到默认网格
-        cmd = [executable, str(N)]
+        # 串行版：N, max_iters, write_heatmap=0，测试时不覆盖 Phase 1 输出。
+        cmd = [executable, str(N), str(max_iters), "0"]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"❌ 运行失败 ({result.returncode}): {result.stderr}")
+        return None
 
     for line in result.stdout.split('\n'):
         # 抓取串行代码的输出

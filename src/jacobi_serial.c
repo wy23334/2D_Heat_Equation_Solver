@@ -22,7 +22,7 @@ double get_time() {
 // ==========================================
 // 核心计算函数：接收 FILE *fp 作为参数
 // ==========================================
-void run_jacobi(int N, FILE *fp) {
+void run_jacobi(int N, int max_iters, FILE *fp) {
     printf("\n=============================================\n");
     printf("   Phase 1: 串行二维 Jacobi 求解器 (N=%d)\n", N);
     printf("=============================================\n");
@@ -55,7 +55,7 @@ void run_jacobi(int N, FILE *fp) {
     printf("[-] 正在进行核心迭代计算...\n");
     // [Req 1]: 实现二维 Jacobi 迭代求解器
     // [Req 4]: 迭代次数达到上限
-    for (iter = 1; iter <= MAX_ITER; iter++) {
+    for (iter = 1; iter <= max_iters; iter++) {
         max_diff = 0.0;
         for (int i = 1; i < N - 1; i++) {
             for (int j = 1; j < N - 1; j++) {
@@ -95,13 +95,13 @@ void run_jacobi(int N, FILE *fp) {
     // [Req 5]: 终端打印总耗时
     printf("[指标 1] 串行耗时    : %.4f 秒 (Req <= 5秒)\n", elapsed);
 
-    int final_iter = iter > MAX_ITER ? MAX_ITER : iter;
+    int final_iter = iter > max_iters ? max_iters : iter;
     printf("[指标 1] 最终迭代次数: %d 次\n", final_iter);
 
     if (max_diff < TOLERANCE) {
         printf("[指标 1] 迭代停止判据: 精度达标 (当前最大误差 %.2e < 1e-6)\n", max_diff);
     } else {
-        printf("[指标 1] 迭代停止判据: ⚠️ 达到迭代次数上限 (%d次，此时误差 %.2e)\n", MAX_ITER, max_diff);
+        printf("[指标 1] 迭代停止判据: ⚠️ 达到迭代次数上限 (%d次，此时误差 %.2e)\n", max_iters, max_diff);
     }
     printf("---------------------------------------------\n");
 
@@ -132,16 +132,21 @@ void run_jacobi(int N, FILE *fp) {
 // ==========================================
 int main(int argc, char *argv[]) {
     int N = DEFAULT_N;
+    int max_iters = MAX_ITER;
+    int write_heatmap = 1;
     // [Req 1]: N 由命令行参数传入
     if (argc > 1) {
         N = atoi(argv[1]);
         if (N < 3) return 1;
     }
+    if (argc > 2) max_iters = atoi(argv[2]);
+    if (argc > 3) write_heatmap = atoi(argv[3]);
+    if (max_iters < 1) return 1;
 
     // 1. 在主函数统一打开文件（"w" 模式覆盖之前的旧文件）
     char filename[] = "../data/heatmap.txt";
-    FILE *fp = fopen(filename, "w");
-    if (!fp) {
+    FILE *fp = write_heatmap ? fopen(filename, "w") : NULL;
+    if (write_heatmap && !fp) {
         printf("[!] 警告: 无法创建或打开 %s 准备写入。\n", filename);
     }
 
@@ -149,7 +154,7 @@ int main(int argc, char *argv[]) {
     // 仅 phase 1 才取消下两行注释，取消注释后须重新编译
 //    run_jacobi(16, fp);
 //    run_jacobi(128, fp);
-    run_jacobi(N, fp);
+    run_jacobi(N, max_iters, fp);
 
     // 3. 运行结束后，统一关闭文件
     if (fp) {

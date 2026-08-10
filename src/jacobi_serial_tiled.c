@@ -17,7 +17,7 @@ double get_time() {
     return tv.tv_sec + tv.tv_usec * 1e-6;
 }
 
-void run_jacobi_tiled(int N, int B, FILE *fp) {
+void run_jacobi_tiled(int N, int B, int max_iters, FILE *fp) {
     printf("\n=============================================\n");
     printf("   Phase 1: 串行二维 Jacobi (极致分块 B=%d, N=%d)\n", B, N);
     printf("=============================================\n");
@@ -54,7 +54,7 @@ void run_jacobi_tiled(int N, int B, FILE *fp) {
     int iter = 0;
     double max_diff = 0.0;
 
-    for (iter = 1; iter <= MAX_ITER; iter++) {
+    for (iter = 1; iter <= max_iters; iter++) {
         max_diff = 0.0;
 
         for (int ii = 1; ii < N - 1; ii += B) {
@@ -98,7 +98,7 @@ void run_jacobi_tiled(int N, int B, FILE *fp) {
 
     printf("\n--- 🏁 性能验证 (Sanity Check) ---\n");
     printf("[指标 1] 串行耗时    : %.4f 秒\n", elapsed);
-    printf("[指标 2] 最终迭代次数: %d 次\n", iter > MAX_ITER ? MAX_ITER : iter);
+    printf("[指标 2] 最终迭代次数: %d 次\n", iter > max_iters ? max_iters : iter);
 
     free(u);
     free(u_new);
@@ -107,10 +107,13 @@ void run_jacobi_tiled(int N, int B, FILE *fp) {
 int main(int argc, char *argv[]) {
     int N = DEFAULT_N;
     int B = 32;
+    int max_iters = MAX_ITER;
 
     if (argc > 1) N = atoi(argv[1]);
     if (argc > 2) B = atoi(argv[2]);
+    if (argc > 3) max_iters = atoi(argv[3]);
+    if (N < 3 || B < 1 || max_iters < 1) return EXIT_FAILURE;
 
-    run_jacobi_tiled(N, B, NULL);
+    run_jacobi_tiled(N, B, max_iters, NULL);
     return 0;
 }

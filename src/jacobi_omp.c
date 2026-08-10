@@ -1,3 +1,4 @@
+// /home/wy/Projects/2D_Heat_Equation_Solver/src/jacobi_omp.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -30,6 +31,11 @@ int main(int argc, char *argv[]) {
     if (argc > 1) N = atoi(argv[1]);
     if (argc > 2) num_threads = atoi(argv[2]);
     if (argc > 3) max_iters = atoi(argv[3]);
+
+    if (N < 3 || num_threads < 1 || max_iters < 1) {
+        fprintf(stderr, "Usage: %s [N>=3] [threads>=1] [max_iters>=1]\n", argv[0]);
+        return EXIT_FAILURE;
+    }
 
     omp_set_num_threads(num_threads);
 
@@ -130,12 +136,13 @@ int main(int argc, char *argv[]) {
                 }
             }
 
+            // 本轮结果位于 local_u_new；即使本轮达到收敛条件也必须先交换，
+            // 否则最终输出的会是上一轮网格。
+            double *temp = local_u; local_u = local_u_new; local_u_new = temp;
+
             if (step_global_max < TOLERANCE) {
                 break;
             }
-
-            // 交换指针
-            double *temp = local_u; local_u = local_u_new; local_u_new = temp;
         }
 
         #pragma omp master
