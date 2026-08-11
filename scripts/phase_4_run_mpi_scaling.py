@@ -62,8 +62,6 @@ def main():
     build()
     os.makedirs(DATA, exist_ok=True)
     env = os.environ.copy()
-    # This project runs on one host, so shared-memory transport is sufficient.
-    env.setdefault("OMPI_MCA_btl", "self,vader")
     process_counts = [1, 2, 4, 8]
     samples = {p: [] for p in process_counts}
 

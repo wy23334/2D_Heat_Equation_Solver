@@ -1,0 +1,8 @@
+name: heat2d
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - numpy=2.2
+  - matplotlib=3.10
+  - scipy=1.15
