@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Collect fresh perf cache statistics for the final four Phase 3 versions."""
+"""Phase 3: 使用 perf 收集最终四种版本的缓存统计数据。"""
 
 import argparse
 import csv
@@ -114,5 +114,5 @@ if __name__ == "__main__":
     try:
         main()
     except RuntimeError as error:
-        print(f"[!] {error}", file=sys.stderr)
+        print(f"[ERROR] {error}", file=sys.stderr)
         sys.exit(1)

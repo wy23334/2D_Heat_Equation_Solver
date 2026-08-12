@@ -1,3 +1,4 @@
+// Phase 3: OpenMP + 二维分块（tiling）Jacobi 优化版本。
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -11,7 +12,8 @@
 int main(int argc, char *argv[]) {
     int N = 1024;
     int num_threads = 8;
-    int max_iters = 20000;
+    // [Phase 1 - Req 4] 与其他版本统一使用 200000 次默认上限。
+    int max_iters = 200000;
     int B = 64;
 
     if (argc > 1) N = atoi(argv[1]);
@@ -24,9 +26,11 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    // [Phase 3 - Req 3] 线程数和 tile size 均由命令行参数控制。
     omp_set_num_threads(num_threads);
     usleep(100000);
 
+    // [Phase 2 - Req 7] 使用带填充 stride 改善行对齐并降低缓存冲突。
     int stride = (N + 7) & ~7;
     if (stride % 32 == 0) stride += 8;
 
@@ -57,7 +61,7 @@ int main(int argc, char *argv[]) {
         if (my_end > N - 1) my_end = N - 1;
         if (my_start >= N - 1) my_start = my_end = 0;
 
-        // 线程局部 First-Touch NUMA 物理页绑定
+        // [Phase 2 - Req 7] 线程局部 first-touch 初始化 NUMA 物理页。
         if (my_start < my_end) {
             for (int i = my_start; i < my_end; i++) {
                 for (int j = 0; j < stride; j++) {
@@ -89,7 +93,8 @@ int main(int argc, char *argv[]) {
             double my_local_max = 0.0;
 
             if (my_start < my_end) {
-                // 纯正的 2D Grid Tiling
+                // [Phase 3 - Req 2] 每次 Jacobi 迭代内部执行二维分块；
+                // tile 内按 i 外层、j 内层连续访问，不跨迭代分块。
                 for (int ii = my_start; ii < my_end; ii += B) {
                     int i_end = (ii + B < my_end) ? ii + B : my_end;
 
@@ -114,6 +119,7 @@ int main(int argc, char *argv[]) {
                 }
             }
 
+            // [Phase 2 - Req 3/7] 每线程局部最大残差独占缓存行。
             padded_max_diff[tid * CACHE_LINE_DOUBLES] = my_local_max;
 
             #pragma omp barrier
@@ -146,6 +152,7 @@ int main(int argc, char *argv[]) {
         center_temp = (u[IDX(m-1, m-1, stride)] + u[IDX(m, m, stride)] + u[IDX(m-1, m, stride)] + u[IDX(m, m-1, stride)]) * 0.25;
     }
 
+    // [Phase 3 - Req 3/4] 输出统一结果供四版本和 tile size 脚本解析。
     printf("RESULT,N=%d,Threads=%d,Iters=%d,Time=%.6f,Center=%.6f\n", N, num_threads, iter, elapsed, center_temp);
 
     free(u); free(u_new); free(padded_max_diff);

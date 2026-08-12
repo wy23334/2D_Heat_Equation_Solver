@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Generate the final Phase 3 tile-size and four-version bar charts."""
+"""Phase 3: 测试 tile size 和四种版本，并生成最终 CSV 与柱状图。"""
 
 import argparse
 import csv
@@ -98,8 +98,10 @@ def plot_four_versions(stats, serial_b, omp_b, n, threads, iters, runs, path):
     fig, ax = plt.subplots(figsize=(10, 6))
     bars = ax.bar(names, medians, yerr=errors, capsize=5, color=colors,
                   edgecolor="#333333", width=0.66)
-    baseline = medians[0]
-    for bar, value in zip(bars, medians):
+    # 串行版本相对于列优先串行基准计算加速比；OpenMP 版本相对于
+    # 列优先 OpenMP 基准计算加速比，避免跨线程数比较造成误读。
+    baselines = [medians[0], medians[0], medians[2], medians[2]]
+    for bar, value, baseline in zip(bars, medians, baselines):
         ax.text(bar.get_x() + bar.get_width() / 2,
                 value + max(medians) * 0.035,
                 f"{value:.3f} s\n{baseline / value:.2f}x",
@@ -182,7 +184,8 @@ def main():
     four_rows = []
     for label, item in zip(labels, four_stats):
         four_rows.append({
-            "Version": label, "N": args.n, "Threads": args.threads,
+            "Version": label, "N": args.n,
+            "Threads": 1 if "OpenMP" not in label else args.threads,
             "Iters": args.iters, "Runs": args.runs,
             "Median_s": item["median"], "Mean_s": item["mean"],
             "Stddev_s": item["stddev"],
@@ -203,5 +206,5 @@ if __name__ == "__main__":
     try:
         main()
     except RuntimeError as error:
-        print(f"[!] {error}", file=sys.stderr)
+        print(f"[ERROR] {error}", file=sys.stderr)
         sys.exit(1)

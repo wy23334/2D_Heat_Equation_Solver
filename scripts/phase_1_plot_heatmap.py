@@ -1,33 +1,31 @@
-# /home/wy/Projects/2D_Heat_Equation_Solver/scripts/phase_1_plot_heatmap.py
-# phase 1 [Req 6]: 读取 heatmap.txt 绘制热力图（colormap），并与小规模手工计算结果对比
+"""Phase 1: 读取温度场、验证中心温度并绘制热力图。"""
+
+# [Phase 1 - Req 6] 读取 phase_1_heatmap.txt 绘制热力图，
+# 并与 N=128 的中心温度参考值进行正确性对比。
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.ndimage import zoom  # 🌟 新增：导入 scipy 的放大插值模块
+from scipy.ndimage import zoom
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ==========================================
-# 🌟 修改点 1：定义统一的 data 目录路径
-# ==========================================
+# 所有输入与输出均相对于项目 data 目录解析，避免依赖当前工作目录。
 DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../data"))
 
-# 🌟 安全检查：如果 data 目录不存在，则自动创建，防止后续保存图片报错
+# 创建结果目录；exist_ok 保证重复运行不会改变既有数据。
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# 🌟 修改点 2：从 data 目录读取文件
-filename = os.path.join(DATA_DIR, "heatmap.txt")
+# Phase 1 串行求解器输出的温度场文件。
+filename = os.path.join(DATA_DIR, "phase_1_heatmap.txt")
 
 if not os.path.exists(filename):
-    print(f"❌ 找不到数据文件：{filename}")
+    print(f"[ERROR] 找不到数据文件：{filename}")
     exit(1)
 
-print(f"📂 正在读取 {filename} 及其包含的多个矩阵...")
+print(f"[INFO] 读取温度场文件：{filename}")
 
-# ==========================================
-# 1. 逐行解析带标记的文本文件
-# ==========================================
+# 解析以“### N=”分隔的一个或多个温度矩阵。
 matrices = {}
 current_N = None
 current_data = []
@@ -38,34 +36,30 @@ with open(filename, 'r') as f:
         if not line:
             continue
 
-        # 遇到分割标记，准备接收新矩阵
+        # 分隔标记给出后续矩阵的网格规模。
         if line.startswith("### N="):
-            # 如果 current_N 不为空，说明上一个矩阵的数据已经收集完毕，将其存入字典
+            # 遇到下一标记前，先保存已经解析完毕的矩阵。
             if current_N is not None:
                 matrices[current_N] = np.array(current_data, dtype=float)
 
-            # 提取新的 N 值，并清空临时列表准备收集新数据
+            # 初始化新矩阵的解析状态。
             current_N = int(line.split("=")[1])
             current_data = []
         else:
-            # 读取当前矩阵的每一行浮点数
+            # 普通数据行由空格分隔的浮点温度组成。
             row = [float(x) for x in line.split()]
             current_data.append(row)
 
-# 文件读取结束后，把最后一个收集到的矩阵也存入字典
+# 文件结束时保存最后一个矩阵。
 if current_N is not None and current_data:
     matrices[current_N] = np.array(current_data, dtype=float)
 
-# ==========================================
-# 2. 遍历所有矩阵，依次验证并画图
-# ==========================================
+# 对每个网格执行中心温度验证并绘制热力图。
 for N, data in matrices.items():
-    print(f"\n======================================")
-    print(f"   正在处理 N={N} 的数据...")
-    print(f"======================================")
+    print(f"\n处理网格数据：N={N}")
 
-    # [Req 6]: 小规模手工计算结果对比验证
-    target_temp = 56.25  # 基于拉普拉斯方程稳态对称性的理论中心温度
+    # [Phase 1 - Req 6] 使用题目给出的 N=128 中心温度参考值。
+    target_temp = 56.25
 
     if N % 2 != 0:
         center_temp = data[N // 2, N // 2]
@@ -74,24 +68,21 @@ for N, data in matrices.items():
         center_temp = (data[m - 1, m - 1] + data[m, m] + data[m - 1, m] + data[m, m - 1]) / 4.0
 
     error = abs(center_temp - target_temp) / target_temp * 100.0
-    print(f"🔍 理论中心温度: {target_temp:.4f} ℃")
-    print(f"🔍 实际中心温度: {center_temp:.4f} ℃")
-    print(f"🔍 相对误差占比: {error:.4f}%")
+    print(f"参考中心温度: {target_temp:.4f} ℃")
+    print(f"计算中心温度: {center_temp:.4f} ℃")
+    print(f"相对误差: {error:.4f}%")
 
-    # --- 🎨 绘制热力图 (底层颜色块依然使用绝对真实的原数据) ---
+    # 热力图直接使用求解器输出；bilinear 仅影响显示，不修改数值数据。
     plt.figure(figsize=(9, 7))
     im = plt.imshow(data, cmap='jet', interpolation='bilinear', origin='upper')
     plt.colorbar(im, label='Temperature (℃)')
 
-    # ==========================================
-    # 🌟 修复与改进：恢复完美的 levels=12，并安全平滑
-    # ==========================================
+    # 小网格使用双线性插值生成等温线。order=1 不产生高阶插值过冲，
+    # 等温线只承担可视化作用，不参与中心温度误差计算。
     zoom_factor = max(1, 512 // N)
-    levels_count = 12  # 恢复你原本完美的 12 层划分！
+    levels_count = 12
 
     if zoom_factor > 1:
-        # 【修复】：将 order=3 改为 order=1 (双线性插值)
-        # 这样既能把小网格平滑，又绝对不会在极端的边界处产生过冲报错
         smooth_data = zoom(data, zoom_factor, order=1)
         x = np.linspace(0, N - 1, smooth_data.shape[1])
         y = np.linspace(0, N - 1, smooth_data.shape[0])
@@ -105,12 +96,10 @@ for N, data in matrices.items():
     plt.xlabel("X (Columns)")
     plt.ylabel("Y (Rows)")
 
-    # ==========================================
-    # 🌟 修改点 3：将生成的图片保存到 data 目录
-    # ==========================================
-    img_name = os.path.join(DATA_DIR, f"colormap_{N}.png")
+    # 使用 Phase 前缀保存结果，便于与其他阶段数据区分。
+    img_name = os.path.join(DATA_DIR, f"phase_1_colormap_{N}.png")
     plt.savefig(img_name, dpi=300, bbox_inches='tight')
 
-    # 关闭当前画布
+    # 显式释放画布，避免处理多个矩阵时累积图形资源。
     plt.close()
-    print(f"🎉 热力图与等温线渲染完毕，已保存至 -> {img_name}")
+    print(f"[INFO] 热力图已保存：{img_name}")

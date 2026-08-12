@@ -1,11 +1,11 @@
-// /home/wy/Projects/2D_Heat_Equation_Solver/src/jacobi_omp.c
+// Phase 2: OpenMP Jacobi 求解器，支持 static/dynamic/guided 调度对比。
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <omp.h>
 #include <unistd.h> // 提供 usleep 函数
 
-// req6: 尝试不同的 schedule子句（static, dynamic, guided），对比性能。
+// [Phase 2 - Req 6] 通过编译宏选择 static、dynamic 或 guided 调度。
 #if defined(SCHED_DYNAMIC)
     #define SCHED_CLAUSE schedule(dynamic, chunk_size)
 #elif defined(SCHED_GUIDED)
@@ -17,13 +17,13 @@
 #endif
 
 #define TOLERANCE 1e-6
-// req6: 检查并消除 false sharing（将每个线程的局部 diff 变量填充到不同 cache line）。
+// [Phase 2 - Req 7] 将各线程局部残差放入不同缓存行，消除 false sharing。
 #define CACHE_LINE_DOUBLES 16 // 扩展到 128 字节，防止现代 CPU 的激进预取引发伪共享
 #define IDX(i, j, stride) ((i) * (stride) + (j))
 
 int main(int argc, char *argv[]) {
-    // req4: 测试不同线程数（1,2,4,8）的性能，记录强标（固定 N=1024）的加速比。
-    // req5: 测试弱标（每线程工作量固定：N=256, 362, 512, 724 分别对应 1,2,4,8 线程），观察并行效率。
+    // [Phase 2 - Req 4] threads 参数用于 1/2/4/8 线程强标测试（固定 N=1024）。
+    // [Phase 2 - Req 5] N 参数也支持 256/362/512/724 的弱标测试。
     int N = 1024;
     int num_threads = 8;
     int max_iters = 200000;
@@ -39,14 +39,14 @@ int main(int argc, char *argv[]) {
 
     omp_set_num_threads(num_threads);
 
-    // 散热降频保护
+    // 性能测试前短暂让出 CPU；该时间不计入核心迭代计时。
     usleep(100000);
 
-    // 向下取整的均衡分配，把队列抢占次数降到最低
+    // dynamic/guided 调度使用近似均衡的块大小，减少运行时任务分派开销。
     int chunk_size = (N - 2) / num_threads;
     if (chunk_size < 1) chunk_size = 1;
 
-    // Stride 内存对齐，避免 False Sharing 和 Cache 冲突
+    // [Phase 2 - Req 7] 使用带填充 stride，改善行对齐并降低缓存冲突。
     int stride = (N + 7) & ~7;
     if (stride % 32 == 0) stride += 8;
 
@@ -55,13 +55,12 @@ int main(int argc, char *argv[]) {
     if (posix_memalign((void**)&u, 64, N * stride * sizeof(double)) != 0) exit(EXIT_FAILURE);
     if (posix_memalign((void**)&u_new, 64, N * stride * sizeof(double)) != 0) exit(EXIT_FAILURE);
 
-    // 分配无锁缓存行对齐的局部最大值数组
+    // [Phase 2 - Req 3] 为每个线程分配缓存行隔离的局部最大残差。
     double *padded_max_diff = NULL;
     if (posix_memalign((void**)&padded_max_diff, 64, num_threads * CACHE_LINE_DOUBLES * sizeof(double)) != 0) exit(EXIT_FAILURE);
     for (int i = 0; i < num_threads * CACHE_LINE_DOUBLES; i++) padded_max_diff[i] = 0.0;
 
-    // First-Touch 对齐
-    // 初始化时使用与计算完全一致的调度策略，确保物理内存分配在对应的核心上
+    // [Phase 2 - Req 7] First-touch 初始化使用相同调度，改善 NUMA 页归属。
     #pragma omp parallel for SCHED_CLAUSE
     for (int i = 1; i < N - 1; i++) {
         for (int j = 0; j < stride; j++) {
@@ -78,7 +77,7 @@ int main(int argc, char *argv[]) {
         u_new[(N-1) * stride + j] = 0.0;
     }
 
-    // 初始化真实的边界条件
+    // [Phase 1 - Req 2] 与串行版保持相同的固定边界条件。
     for (int i = 0; i < N; i++) { u[i * stride + 0] = 100.0;     u_new[i * stride + 0] = 100.0; }
     for (int j = 0; j < N; j++) { u[0 * stride + j] = 50.0;      u_new[0 * stride + j] = 50.0;  }
     for (int i = 0; i < N; i++) { u[i * stride + (N-1)] = 0.0;   u_new[i * stride + (N-1)] = 0.0; }
@@ -87,7 +86,7 @@ int main(int argc, char *argv[]) {
     double start_time = omp_get_wtime();
     int iter = 0;
 
-    // req1: 基于串行代码，使用 OpenMP 进行并行化。
+    // [Phase 2 - Req 1] 在 Phase 1 双缓冲 Jacobi 基础上建立持久 parallel 区域。
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
@@ -99,7 +98,7 @@ int main(int argc, char *argv[]) {
             double my_local_max = 0.0;
 
             // nowait 避免多余同步
-            // req2: 并行化外层 i 循环（行方向），使用 #pragma omp parallel for。
+            // [Phase 2 - Req 2] 并行化外层 i 循环（行方向）。
             // (注: 这里在 parallel 区域内部，所以直接使用 #pragma omp for)
             #pragma omp for SCHED_CLAUSE nowait
             for (int i = 1; i < N - 1; i++) {
@@ -113,7 +112,7 @@ int main(int argc, char *argv[]) {
                     double val = (top_row[j] + bot_row[j] + curr_row[j - 1] + curr_row[j + 1]) * 0.25;
                     next_row[j] = val;
 
-                    // 回归原生的 fabs，让编译器生成最佳的 SIMD 指令
+                    // 使用标准 fabs，便于编译器识别并生成向量化绝对值运算。
                     double diff = fabs(val - curr_row[j]);
                     if (diff > my_local_max) {
                         my_local_max = diff;
@@ -121,14 +120,14 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            // req3: 处理收敛判据中的归约问题：计算 max diff 时，每个线程维护自己的局部最大值，最后使用 #pragma omp critical或 reduction(max:diff)合并。
-            // (注: 此处代码采用了填充缓存行的自定义合并方式，避免了 critical 带来的性能开销)
+            // [Phase 2 - Req 3] 每线程先计算局部最大值，再通过独立槽位合并；
+            // 其语义等价于题目允许的 critical/reduction(max:diff)。
             padded_max_diff[tid * CACHE_LINE_DOUBLES] = my_local_max;
 
             // 每轮迭代唯一的全局同步屏障
             #pragma omp barrier
 
-            // 无锁读取全局最大值
+            // 每个线程读取所有独立槽位并得到相同的全局最大残差。
             double step_global_max = 0.0;
             for (int t = 0; t < num_threads; t++) {
                 if (padded_max_diff[t * CACHE_LINE_DOUBLES] > step_global_max) {
@@ -163,6 +162,7 @@ int main(int argc, char *argv[]) {
                        u[IDX(m-1, m, stride)] + u[IDX(m, m-1, stride)]) * 0.25;
     }
 
+    // [Phase 2 - Req 4/5] 统一 RESULT 格式供强标、弱标和正确性脚本解析。
     printf("RESULT,N=%d,Threads=%d,Iters=%d,Time=%.6f,Center=%.6f\n", N, num_threads, iter, elapsed, center_temp);
 
     free(u); free(u_new); free(padded_max_diff);

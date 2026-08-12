@@ -1,13 +1,10 @@
-# /home/wy/Projects/2D_Heat_Equation_Solver/scripts/phase_2_run_scaling_tests.py
-# phase 2 - 批量运行求均值版
+"""Phase 2: 批量运行 OpenMP 强标/弱标实验并生成 CSV 与折线图。"""
 import subprocess
 import os
 import csv
 import matplotlib.pyplot as plt
 
-# ==========================================
-# 🌟 评测参数配置
-# ==========================================
+# 实验路径与统一参数。固定迭代次数保证不同线程配置执行相同工作量。
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../data"))
 if not os.path.exists(DATA_DIR):
@@ -16,12 +13,12 @@ if not os.path.exists(DATA_DIR):
 SCHEDULES = ["static", "dynamic", "guided"]
 BENCHMARK_ITERS = 5000
 
-# 🌟 新增：批量运行次数（你可以修改为 10、50 或 100）
+# 每个配置独立重复 10 次，以算术平均值降低瞬时系统噪声的影响。
 NUM_RUNS = 10
 
 
 def run_c_program(executable, N, threads, max_iters):
-    """调用 C 程序并解析返回的耗时和实际迭代次数（单次基础函数）"""
+    """运行一次 OpenMP 求解器并解析 RESULT 记录。"""
     if not os.path.exists(executable):
         return None, None
 
@@ -38,11 +35,11 @@ def run_c_program(executable, N, threads, max_iters):
 
 
 def get_average_time(executable, N, threads, max_iters, runs):
-    """🌟 核心新增：连续运行指定次数，计算平均耗时"""
+    """重复运行同一配置并返回平均时间和实际迭代次数。"""
     times = []
     actual_iters = 0
 
-    # 打印一个简单的进度条，防止 100 次看着像卡死了
+    # 输出运行进度，便于区分长时间计算与异常停滞。
     print(f"      [测算 {runs} 次] ", end="", flush=True)
 
     for i in range(runs):
@@ -51,12 +48,12 @@ def get_average_time(executable, N, threads, max_iters, runs):
             times.append(t)
             actual_iters = iters
 
-        # 每跑完 10% 打印一个点
+        # 以总运行次数的 10% 为间隔更新一次进度。
         if runs >= 10 and (i + 1) % (runs // 10) == 0:
             print(".", end="", flush=True)
 
     if not times:
-        print(" ❌ 全部失败")
+        print(" [ERROR] 未获得有效样本")
         return None, None
 
     avg_t = sum(times) / len(times)
@@ -64,13 +61,14 @@ def get_average_time(executable, N, threads, max_iters, runs):
     return avg_t, actual_iters
 
 
-print(f"🚀 开始进行 OpenMP 综合性能自动化评测 (批量 {NUM_RUNS} 次求均值版)...\n")
+print(f"开始 OpenMP 强标与弱标实验；每个配置重复 {NUM_RUNS} 次。\n")
 
-print("🔥 正在进行全局 CPU 预热 (唤醒硬件最高性能状态)...")
+# 预热阶段不进入正式样本，用于减小初始频率状态对首个配置的偏差。
+print("执行 CPU 预热。")
 warmup_exe = os.path.join(SCRIPT_DIR, f"../src/jacobi_omp_static")
 if os.path.exists(warmup_exe):
     subprocess.run([warmup_exe, "1024", "8", "1000"], capture_output=True)
-print("🔥 预热完成，正式开始评测！(预计耗时可能较长，请耐心等待)\n")
+print("CPU 预热完成，开始采集正式样本。\n")
 
 plot_data = {
     sched: {
@@ -87,19 +85,16 @@ weak_scaling_pairs = [(1, 256), (2, 362), (4, 512), (8, 724)]
 for sched in SCHEDULES:
     executable = os.path.join(SCRIPT_DIR, f"../src/jacobi_omp_{sched}")
     if not os.path.exists(executable):
-        print(f"❌ 找不到可执行文件: {executable}，请确保已经 make all\n")
+        print(f"[ERROR] 找不到可执行文件：{executable}；请先执行 make all。\n")
         continue
 
-    print(f"==========================================")
-    print(f"   正在评测调度策略: {sched.upper()}")
-    print(f"==========================================")
+    print(f"\n评测调度策略：{sched.upper()}")
 
-    # --- 1. 强标测试 ---
-    print(f"--- 📊 Req 4: 强标测试 (固定 N={N_strong}) ---")
+    # [Phase 2 - Req 4] 强标固定 N=1024，仅改变线程数。
+    print(f"--- Req 4：强标测试（固定 N={N_strong}）---")
     t1_strong = None
     for t in threads_list:
         print(f"Threads: {t:<2}", end="")
-        # 🌟 使用平均耗时函数
         avg_time, iters = get_average_time(executable, N_strong, t, BENCHMARK_ITERS, NUM_RUNS)
         if avg_time is None: continue
 
@@ -117,12 +112,11 @@ for sched in SCHEDULES:
 
     print("")
 
-    # --- 2. 弱标测试 ---
-    print("--- 📊 Req 5: 弱标测试 (人均任务固定 N=256) ---")
+    # [Phase 2 - Req 5] 弱标使总网格点数近似与线程数成正比。
+    print("--- Req 5：弱标测试（每线程工作量近似固定）---")
     t1_weak = None
     for t, N_weak in weak_scaling_pairs:
         print(f"Threads: {t:<2} | Grid: {N_weak:<4}", end="")
-        # 🌟 使用平均耗时函数
         avg_time, iters = get_average_time(executable, N_weak, t, BENCHMARK_ITERS, NUM_RUNS)
         if avg_time is None: continue
 
@@ -140,15 +134,13 @@ for sched in SCHEDULES:
 
     print("\n")
 
-# ==========================================
-# 导出统一 CSV 和绘制多线图
-# ==========================================
-csv_filename = os.path.join(DATA_DIR, "scaling_comparison_avg.csv")
+# 将三种调度策略的强标与弱标结果写入统一 CSV。
+csv_filename = os.path.join(DATA_DIR, "phase_2_scaling_comparison.csv")
 with open(csv_filename, mode='w', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(["Schedule", "Test_Type", "Grid_N", "Threads", "Iters", "Avg_Time_s", "Speedup", "Efficiency_pct"])
     writer.writerows(csv_rows)
-print(f"✅ 综合均值测试数据已保存至: {csv_filename}")
+print(f"[INFO] 性能数据已保存：{csv_filename}")
 
 style_map = {
     'static': {'color': 'blue', 'marker': 'o', 'label': 'Static (Avg)'},
@@ -193,7 +185,7 @@ plt.xticks([1, 2, 4, 8])
 plt.grid(True, linestyle=':', alpha=0.7)
 plt.legend()
 
-img_filename = os.path.join(DATA_DIR, "scaling_comparison_avg.png")
+img_filename = os.path.join(DATA_DIR, "phase_2_scaling_comparison.png")
 plt.savefig(img_filename, dpi=300, bbox_inches='tight')
 plt.close()
-print(f"🎉 均值性能折线图渲染完毕，已保存至 -> {img_filename}")
+print(f"[INFO] 性能折线图已保存：{img_filename}")

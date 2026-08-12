@@ -1,5 +1,4 @@
-// /home/wy/Projects/2D_Heat_Equation_Solver/src/jacobi_serial_tiled.c
-// Phase 1 - Tiling & SIMD Optimization (极致性能版 + 内存安全检查)
+// Phase 3: 串行二维分块（tiling）与 SIMD 优化版本。
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -18,29 +17,29 @@ double get_time() {
 }
 
 void run_jacobi_tiled(int N, int B, int max_iters, FILE *fp) {
-    printf("\n=============================================\n");
-    printf("   Phase 1: 串行二维 Jacobi (极致分块 B=%d, N=%d)\n", B, N);
-    printf("=============================================\n");
+    printf("\nPhase 3: 串行二维 Jacobi 分块版本 (B=%d, N=%d)\n", B, N);
 
-    // 为了使用高级 AVX 指令，内存对齐到 64 字节，并添加强制的返回值安全检查
+    // [Phase 3 - Req 2] 64 字节对齐双缓冲数组，便于编译器向量化。
     double *u = NULL;
     double *u_new = NULL;
 
     if (posix_memalign((void**)&u, 64, N * N * sizeof(double)) != 0) {
-        fprintf(stderr, "[!] 错误: 无法为 u 分配对齐的内存！\n");
+        fprintf(stderr, "[ERROR] 无法为 u 分配对齐内存。\n");
         exit(EXIT_FAILURE);
     }
     if (posix_memalign((void**)&u_new, 64, N * N * sizeof(double)) != 0) {
-        fprintf(stderr, "[!] 错误: 无法为 u_new 分配对齐的内存！\n");
+        fprintf(stderr, "[ERROR] 无法为 u_new 分配对齐内存。\n");
         exit(EXIT_FAILURE);
     }
 
+    // [Phase 1 - Req 2] 内部初值为 0℃。
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
             u[IDX(i, j, N)] = 0.0; u_new[IDX(i, j, N)] = 0.0;
         }
     }
 
+    // [Phase 1 - Req 2] 固定四条边界，且两个缓冲区保持一致。
     for (int i = 0; i < N; i++) {
         u[IDX(i, 0, N)] = 100.0;     u_new[IDX(i, 0, N)] = 100.0;
         u[IDX(i, N-1, N)] = 0.0;     u_new[IDX(i, N-1, N)] = 0.0;
@@ -57,6 +56,8 @@ void run_jacobi_tiled(int N, int B, int max_iters, FILE *fp) {
     for (iter = 1; iter <= max_iters; iter++) {
         max_diff = 0.0;
 
+        // [Phase 3 - Req 2] 分块只发生在一次 Jacobi 迭代内部；每个 tile
+        // 内仍按 i 外层、j 内层的行优先顺序遍历，保持双缓冲逻辑不变。
         for (int ii = 1; ii < N - 1; ii += B) {
             int i_end = MIN_VAL(ii + B, N - 1);
 
@@ -64,10 +65,12 @@ void run_jacobi_tiled(int N, int B, int max_iters, FILE *fp) {
                 int j_end = MIN_VAL(jj + B, N - 1);
 
                 for (int i = ii; i < i_end; i++) {
-                    double * restrict curr_row = __builtin_assume_aligned(&u[i * N], 64);
-                    double * restrict top_row  = __builtin_assume_aligned(&u[(i - 1) * N], 64);
-                    double * restrict bot_row  = __builtin_assume_aligned(&u[(i + 1) * N], 64);
-                    double * restrict next_row = __builtin_assume_aligned(&u_new[i * N], 64);
+                    // 基址按 64 字节对齐，但任意 N 时每一行不一定仍对齐，
+                    // 因此不对行指针作不安全的 assume_aligned 假设。
+                    double * restrict curr_row = &u[i * N];
+                    double * restrict top_row  = &u[(i - 1) * N];
+                    double * restrict bot_row  = &u[(i + 1) * N];
+                    double * restrict next_row = &u_new[i * N];
 
                     double row_max = 0.0;
 
@@ -90,13 +93,15 @@ void run_jacobi_tiled(int N, int B, int max_iters, FILE *fp) {
             }
         }
 
+        // [Phase 1 - Req 3/4] 每轮交换指针，并检查最大残差收敛条件。
         double *temp = u; u = u_new; u_new = temp;
         if (max_diff < TOLERANCE) break;
     }
 
     double elapsed = get_time() - start_time;
 
-    printf("\n--- 🏁 性能验证 (Sanity Check) ---\n");
+    printf("\n--- 性能验证 (Sanity Check) ---\n");
+    // [Phase 3 - Req 3/4] 输出时间和实际迭代数供 tile size 脚本解析。
     printf("[指标 1] 串行耗时    : %.4f 秒\n", elapsed);
     printf("[指标 2] 最终迭代次数: %d 次\n", iter > max_iters ? max_iters : iter);
 

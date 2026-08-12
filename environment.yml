@@ -6,3 +6,6 @@ dependencies:
   - numpy=2.2
   - matplotlib=3.10
   - scipy=1.15
+  # Phase 4: MPI runtime plus the compiler expected by the Open MPI wrapper.
+  - openmpi=5.0
+  - c-compiler

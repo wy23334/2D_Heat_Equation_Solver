@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Run MPI strong-scaling tests and generate the Phase 4 CSV/plot."""
+"""Phase 4: 运行 MPI 强标实验并生成 CSV 与加速比图。"""
 
 import argparse
 import csv
@@ -108,8 +108,10 @@ def main():
     ax.plot(process_counts, process_counts, "k--", label="Ideal speedup")
     ax.plot(process_counts, speedups, color="#4C78A8", marker="o",
             linewidth=2.2, markersize=7, label="Measured MPI speedup")
-    ax.axhline(5.0, color="#C44E52", linestyle=":",
-               label="8-process target (5x)")
+    # [Phase 4 - Req 4] 验收下界：1 进程为 1x，8 进程至少达到 5x。
+    # 与 Phase 2 的 Minimum Requirement 画法保持一致。
+    ax.plot([1, 8], [1.0, 5.0], color="#C44E52", linestyle="--",
+            linewidth=2.0, label="Minimum requirement (8 processes >= 5.0x)")
     for p, speedup in zip(process_counts, speedups):
         ax.annotate(f"{speedup:.2f}x", (p, speedup),
                     xytext=(0, 9), textcoords="offset points", ha="center")
@@ -138,5 +140,5 @@ if __name__ == "__main__":
     try:
         main()
     except RuntimeError as error:
-        print(f"[!] {error}", file=sys.stderr)
+        print(f"[ERROR] {error}", file=sys.stderr)
         sys.exit(1)
